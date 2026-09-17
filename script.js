@@ -717,7 +717,8 @@ function createTrip(event) {
     transport: [],
     checklist: defaultChecklistItems.slice(),
     checklistState: {},
-    memo: ""
+    memo: "",
+    toolAttachments: { checklist: { attachment: null }, memo: { attachment: null } }
   };
 
   tripCollection.push(newTrip);
@@ -1086,6 +1087,68 @@ async function getAttachmentFromForm(form, existingAttachment) {
     return { kind: "local", name: file.name, type: file.type, data: await readFileAsDataUrl(file) };
   }
   return existingAttachment || null;
+}
+
+const toolAttachmentConfig = {
+  checklist: { containerId: "checklist-attachment", inputId: "checklist-attachment-file", label: "체크리스트 파일" },
+  memo: { containerId: "memo-attachment", inputId: "memo-attachment-file", label: "메모 파일" }
+};
+
+function getToolAttachment(trip, slot) {
+  return trip?.toolAttachments?.[slot]?.attachment || null;
+}
+
+function setToolAttachment(trip, slot, attachment) {
+  if (!trip) return;
+  trip.toolAttachments = trip.toolAttachments || {};
+  trip.toolAttachments[slot] = { attachment: attachment || null };
+}
+
+function renderToolAttachment(slot, statusMessage = "") {
+  const config = toolAttachmentConfig[slot];
+  const container = document.querySelector(`#${config.containerId}`);
+  if (!container) return;
+
+  const trip = getSelectedTrip();
+  const attachment = getToolAttachment(trip, slot);
+  const attachmentMarkup = attachment
+    ? `<div class="tool-attachment-file">${renderAttachment(attachment)}<button class="text-link tool-attachment-remove" data-tool-attachment-remove="${slot}" type="button">삭제</button></div>`
+    : `<span class="tool-attachment-empty">첨부된 파일 없음</span>`;
+  const message = statusMessage || (attachment ? "Google Drive에 저장됨" : "Google Drive에 저장됩니다.");
+
+  container.innerHTML = `
+    <div class="tool-attachment-head">
+      <label class="file-button">+ ${config.label}<input id="${config.inputId}" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" ${trip ? "" : "disabled"} /></label>
+      <span class="tool-attachment-status">${escapeHtml(message)}</span>
+    </div>
+    ${attachmentMarkup}
+  `;
+
+  const input = container.querySelector(`#${config.inputId}`);
+  input?.addEventListener("change", async event => {
+    const file = event.target.files?.[0];
+    const currentTrip = getSelectedTrip();
+    if (!file || !currentTrip) return;
+    if (file.size > 3 * 1024 * 1024) {
+      window.alert("첨부 파일은 3MB 이하만 선택할 수 있습니다.");
+      renderToolAttachment(slot);
+      return;
+    }
+
+    setToolAttachment(currentTrip, slot, { kind: "local", name: file.name, type: file.type, data: await readFileAsDataUrl(file) });
+    renderToolAttachment(slot, "Google Drive에 저장하는 중...");
+    const saved = await saveTripCollection();
+    if (!saved) renderToolAttachment(slot, "저장에 실패했습니다. 다시 시도해 주세요.");
+  });
+
+  container.querySelector("[data-tool-attachment-remove]")?.addEventListener("click", async () => {
+    const currentTrip = getSelectedTrip();
+    if (!currentTrip || !window.confirm("이 첨부 파일을 삭제할까요?")) return;
+    setToolAttachment(currentTrip, slot, null);
+    renderToolAttachment(slot, "삭제하는 중...");
+    const saved = await saveTripCollection();
+    if (!saved) renderToolAttachment(slot, "삭제 저장에 실패했습니다.");
+  });
 }
 
 async function saveEditor(event) {
@@ -1645,6 +1708,7 @@ function renderChecklist() {
     event.target.closest(".check-item").classList.toggle("checked", event.target.checked);
     updateCheckProgress(next);
   }));
+  renderToolAttachment("checklist");
 }
 
 function updateCheckProgress(saved) {
@@ -1659,6 +1723,7 @@ function updateCheckProgress(saved) {
 function renderMemo() {
   const memo = document.querySelector("#travel-memo");
   if (memo) memo.value = getSelectedTrip()?.memo || "";
+  renderToolAttachment("memo");
 }
 
 function bindMemo() {

@@ -333,6 +333,17 @@ h1 span { color: #d8d8d8; }
 .tool-heading { display: flex; justify-content: space-between; align-items: start; gap: 15px; margin-bottom: 20px; }
 .tool-heading h3 { margin: 0; font-size: 21px; letter-spacing: -.05em; }
 .tool-count, .save-hint { color: var(--brown); font-size: 11px; font-weight: 700; }
+.tool-attachment { margin-top: 22px; padding-top: 15px; border-top: 1px solid var(--border); }
+.tool-attachment-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.file-button { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 8px 11px; cursor: pointer; border: 1px dashed var(--border); border-radius: 10px; color: var(--accent); background: transparent; font-size: 10px; font-weight: 800; }
+.file-button:hover { border-color: var(--accent); background: var(--accent-light); }
+.file-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.file-button input:disabled + * { cursor: default; }
+.tool-attachment-status, .tool-attachment-empty { color: var(--subtext); font-size: 10px; line-height: 1.5; }
+.tool-attachment-file { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; margin-top: 10px; }
+.tool-attachment-file .event-attachment { min-width: 0; margin-top: 0; }
+.tool-attachment-file .event-attachment a { max-width: 100%; }
+.tool-attachment-remove { flex: 0 0 auto; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .checklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 16px; }
 .check-item { display: flex; align-items: center; gap: 9px; cursor: pointer; color: var(--subtext); font-size: 12px; }
 .check-item input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); }
@@ -419,6 +430,8 @@ h1 span { color: #d8d8d8; }
   .tool-card { padding: 21px; border-radius: 19px; }
   .tool-heading { flex-wrap: wrap; }
   .tool-heading > .card-actions { width: 100%; justify-content: space-between; }
+  .tool-attachment-head { align-items: flex-start; flex-direction: column; }
+  .tool-attachment-file { align-items: flex-start; }
   .checklist { gap: 10px 8px; }
   .check-item { font-size: 11px; }
   .site-footer { display: block; line-height: 2; }
