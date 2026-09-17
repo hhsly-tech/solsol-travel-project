@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f3f3f3" />
+  <meta name="description" content="솔솔부부의 2026 후쿠오카 · 유후인 여행 일정" />
+  <title>솔솔부부 여행프로젝트 · FUKUOKA & YUFUIN</title>
+  <link rel="stylesheet" href="style.css?v=20260917-3" />
+</head>
+<body>
+  <div class="workspace-layout">
+    <aside class="trip-navigator" aria-label="여행 아카이브 네비게이터">
+      <div class="navigator-heading">
+        <div class="navigator-character" aria-hidden="true">
+          <img src="assets/images/solsol-couple-characters.png" alt="" />
+        </div>
+        <h2>솔솔 여행</h2>
+      </div>
+      <div id="trip-list" class="trip-list"></div>
+      <div class="navigator-footer">
+        <button id="add-trip-button" class="add-trip-button" type="button"><span>+</span> 새 여행 만들기</button>
+      </div>
+    </aside>
+
+  <main id="top" class="page-shell">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <h1 id="hero-title">2026<br /><span>FUKUOKA</span> · <span>YUFUIN</span></h1>
+        <p class="hero-subtitle">후쿠오카 · 유후인 3박 4일</p>
+        <div class="date-range">
+          <strong>2026.09.18 FRI</strong>
+          <span>—</span>
+          <strong>2026.09.21 MON</strong>
+        </div>
+      </div>
+      <div class="hero-actions"><button class="hero-edit-button" data-action="edit-trip" type="button">여행 기본 정보 편집</button><button class="hero-edit-button" data-action="manage-route" type="button">여행 흐름 편집</button></div>
+      <div id="route-flow" class="route-flow" aria-label="여행 흐름"></div>
+    </section>
+
+    <nav id="day-nav" class="day-nav" aria-label="일정 바로가기"></nav>
+
+    <section class="section-block" aria-labelledby="summary-title">
+      <div class="section-heading section-heading-with-actions">
+        <div><p class="eyebrow">THE ESSENTIALS</p><h2 id="summary-title">여행 핵심 정보</h2></div>
+        <div class="section-actions"><button class="small-action" data-action="add-flight" type="button">+ 항공편</button><button class="small-action" data-action="add-stay" type="button">+ 숙소</button></div>
+      </div>
+      <div id="summary-container" class="summary-grid"></div>
+    </section>
+
+    <section id="schedule" class="section-block" aria-labelledby="schedule-title">
+      <div class="section-heading split-heading section-heading-with-actions">
+        <div><p class="eyebrow">DAY BY DAY</p><h2 id="schedule-title">여행 전체 일정</h2></div>
+        <div class="section-actions schedule-actions"><button class="small-action" data-action="add-day" type="button">+ 일자</button><button class="small-action" data-action="manage-categories" type="button">분류 관리</button></div>
+      </div>
+      <div id="schedule-container" class="schedule-container"></div>
+    </section>
+
+    <section class="section-block two-column-section" aria-labelledby="food-title">
+      <div class="section-heading"><p class="eyebrow">TASTE NOTES</p><h2 id="food-title">FOOD PLAN</h2><p class="section-caption">일정에서 ‘식사’를 선택한 항목이<br />날짜별로 자동으로 모입니다.</p></div>
+      <div id="food-container" class="food-grid"></div>
+    </section>
+
+    <section class="section-block two-column-section" aria-labelledby="transport-title">
+      <div class="section-heading section-heading-with-actions"><div><p class="eyebrow">GETTING AROUND</p><h2 id="transport-title">Transportation</h2><p class="section-caption">비행기와 유후인 버스의<br />출발 정보를 한 곳에서 확인해요.</p></div><div class="section-actions"><button class="small-action" data-action="add-transport" type="button">+ 교통</button></div></div>
+      <div id="transport-container" class="transport-grid"></div>
+    </section>
+
+    <section class="section-block tools-section" aria-labelledby="tools-title">
+      <div class="section-heading"><p class="eyebrow">READY TO GO</p><h2 id="tools-title">여행 준비 도구</h2></div>
+      <div class="tools-grid">
+        <article class="tool-card checklist-card">
+          <div class="tool-heading"><div><span class="eyebrow">PACKING LIST</span><h3>체크리스트</h3></div><div class="card-actions"><button class="small-action" data-action="manage-checklist" type="button">편집</button><span id="check-progress" class="tool-count">0 / 10</span></div></div>
+          <div id="checklist" class="checklist"></div>
+        </article>
+        <article class="tool-card memo-card">
+          <div class="tool-heading"><div><span class="eyebrow">PRIVATE NOTES</span><h3>여행 메모</h3></div><span class="save-hint">자동 저장</span></div>
+          <textarea id="travel-memo" placeholder="유후인에서 사고 싶은 것&#10;후쿠오카 쇼핑 리스트&#10;먹고 싶은 것"></textarea>
+          <p class="memo-status" id="memo-status">브라우저에 안전하게 저장됩니다.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <span>솔솔부부 여행 프로젝트</span>
+    </footer>
+  </main>
+  </div>
+
+  <div id="trip-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button id="close-trip-modal" class="modal-close" type="button" aria-label="창 닫기">×</button>
+      <p class="eyebrow">NEW JOURNEY</p>
+      <h2 id="modal-title">새 여행 만들기</h2>
+      <p class="modal-description">기간과 국가·여행지를 입력하면<br />새로운 여행 페이지가 생성됩니다.</p>
+      <form id="trip-form">
+        <div class="editor-grid">
+          <label>시작일 <input name="startDate" type="date" required /></label>
+          <label>종료일 <input name="endDate" type="date" required /></label>
+        </div>
+        <div class="country-picker" data-country-picker>
+          <label>국가</label>
+          <input name="countrySearch" data-country-search type="search" autocomplete="off" placeholder="국가명을 한글로 검색하세요" required />
+          <input name="countryCode" data-country-code type="hidden" />
+          <div class="country-options" data-country-options hidden></div>
+        </div>
+        <label>여행지 <input name="destination" type="text" placeholder="예: 후쿠오카 · 유후인" required /></label>
+        <div class="modal-actions">
+          <button id="cancel-trip" class="secondary-button" type="button">취소</button>
+          <button class="primary-button" type="submit">여행 생성</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="editor-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-editor></div>
+    <section class="modal-card editor-modal-card" role="dialog" aria-modal="true" aria-labelledby="editor-modal-title">
+      <button id="close-editor-modal" class="modal-close" type="button" aria-label="창 닫기">×</button>
+      <p id="editor-modal-eyebrow" class="eyebrow">EDIT</p>
+      <h2 id="editor-modal-title">정보 편집</h2>
+      <p id="editor-modal-description" class="modal-description"></p>
+      <form id="editor-form">
+        <div id="editor-fields"></div>
+        <div class="modal-actions">
+          <button id="delete-editor-trip" class="secondary-button danger-button" type="button" hidden>여행 삭제</button>
+          <button id="cancel-editor" class="secondary-button" type="button">취소</button>
+          <button id="submit-editor" class="primary-button" type="submit">저장</button>
+        </div>
+      </form>
+    </section>
+  </div>
+  <script src="script.js?v=20260917-4"></script>
+</body>
+</html>
