@@ -139,25 +139,99 @@ const initialTripCollection = [
 
 // ================================
 // 여행 목록 저장소
-// 기본 여행은 처음 실행할 때만 사용하고,
-// 이후 생성·삭제한 목록은 브라우저 localStorage에 저장합니다.
+// 여행 데이터는 Google Apps Script 웹 앱을 통해 Google Drive에 저장합니다.
 // ================================
-const tripStorageKey = "solsol-trip-collection";
+const sharedApiUrl = String(window.SOLSOL_API_URL || "").trim().replace(/\/$/, "");
+let tripCollection = [];
+let selectedTripId = "";
+let sharedSaveTimer = null;
+let sharedSaveResolvers = [];
 
-function loadTripCollection() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(tripStorageKey) || "null");
-    return Array.isArray(saved) ? saved : initialTripCollection;
-  } catch (error) {
-    return initialTripCollection;
-  }
+function updateSyncStatus(message, isError = false) {
+  const status = document.querySelector("#sync-status");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("is-error", isError);
+}
+
+function cloneTrips(trips) {
+  return JSON.parse(JSON.stringify(trips || []));
+}
+
+function loadSharedTripCollection() {
+  if (!sharedApiUrl) return Promise.resolve({ trips: cloneTrips(initialTripCollection), configured: false });
+
+  return new Promise((resolve, reject) => {
+    const callbackName = `solsolLoad_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement("script");
+    const cleanup = () => {
+      delete window[callbackName];
+      script.remove();
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("공유 저장소 응답 시간이 초과되었습니다."));
+    }, 15000);
+
+    window[callbackName] = payload => {
+      window.clearTimeout(timeout);
+      cleanup();
+      if (!payload?.ok) {
+        reject(new Error(payload?.error || "공유 저장소를 불러오지 못했습니다."));
+        return;
+      }
+      resolve({ trips: Array.isArray(payload.trips) ? payload.trips : [], configured: true });
+    };
+
+    script.onerror = () => {
+      window.clearTimeout(timeout);
+      cleanup();
+      reject(new Error("Google Apps Script 웹 앱에 연결할 수 없습니다."));
+    };
+    script.src = `${sharedApiUrl}?action=load&callback=${encodeURIComponent(callbackName)}&_=${Date.now()}`;
+    document.head.appendChild(script);
+  });
+}
+
+function applySharedTrips(trips) {
+  const previousSelection = selectedTripId;
+  tripCollection = Array.isArray(trips) ? trips : [];
+  selectedTripId = tripCollection.some(trip => trip.id === previousSelection) ? previousSelection : (tripCollection[0]?.id || "");
+  renderTripNavigator();
+  renderSelectedTrip();
 }
 
 function saveTripCollection() {
-  localStorage.setItem(tripStorageKey, JSON.stringify(tripCollection));
-}
+  if (!sharedApiUrl) {
+    updateSyncStatus("공유 저장소 URL을 설정해 주세요", true);
+    return Promise.resolve(false);
+  }
 
-let tripCollection = loadTripCollection();
+  clearTimeout(sharedSaveTimer);
+  const savePromise = new Promise(resolve => sharedSaveResolvers.push(resolve));
+  sharedSaveTimer = window.setTimeout(async () => {
+    const resolvers = sharedSaveResolvers.splice(0);
+    try {
+      const response = await fetch(sharedApiUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify({ action: "save", trips: cloneTrips(tripCollection) })
+      });
+      void response;
+      await new Promise(resolve => window.setTimeout(resolve, 500));
+      const remote = await loadSharedTripCollection();
+      applySharedTrips(remote.trips);
+      updateSyncStatus("공유 저장됨");
+      resolvers.forEach(resolve => resolve(true));
+    } catch (error) {
+      updateSyncStatus("공유 저장 실패 · 다시 시도해 주세요", true);
+      resolvers.forEach(resolve => resolve(false));
+      console.error(error);
+    }
+  }, 250);
+  return savePromise;
+}
 
 const typeInfo = {
   food: { icon: "🍴", label: "FOOD" },
@@ -490,9 +564,6 @@ const statusInfo = {
   tbd: { label: "미정", className: "tbd" }
 };
 
-let selectedTripId = localStorage.getItem("solsol-selected-trip") || tripCollection[0]?.id || "";
-if (!tripCollection.some(trip => trip.id === selectedTripId)) selectedTripId = tripCollection[0]?.id || "";
-
 // ================================
 // 공통 보안·표시 도우미
 // ================================
@@ -508,6 +579,7 @@ function safeAttachmentHref(attachment) {
   if (!attachment) return "";
   if (attachment.kind === "local" && attachment.data?.startsWith("data:")) return attachment.data;
   if (attachment.kind === "github" && /^(https?:\/\/|\.?\.?\/|\/?assets\/)/i.test(attachment.url || "")) return attachment.url;
+  if (attachment.kind === "drive" && /^https:\/\/drive\.google\.com\//i.test(attachment.url || "")) return attachment.url;
   return "";
 }
 
@@ -515,7 +587,7 @@ function renderAttachment(attachment) {
   const href = safeAttachmentHref(attachment);
   if (!href) return "";
   const label = attachment.name || "첨부 파일 열기";
-  const download = attachment.kind === "local" ? ` download="${escapeHtml(label)}"` : "";
+  const download = ["local", "drive"].includes(attachment.kind) ? ` download="${escapeHtml(label)}"` : "";
   return `<div class="event-attachment"><span>📎</span><a href="${escapeHtml(href)}" target="_blank" rel="noreferrer"${download}>${escapeHtml(label)}</a></div>`;
 }
 
@@ -552,7 +624,6 @@ function renderTripNavigator() {
   list.querySelectorAll(".trip-selector").forEach(button => {
     button.addEventListener("click", () => {
       selectedTripId = button.dataset.tripId;
-      localStorage.setItem("solsol-selected-trip", selectedTripId);
       renderTripNavigator();
       renderSelectedTrip();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -574,8 +645,6 @@ function deleteTrip(tripId) {
   tripCollection = tripCollection.filter(trip => trip.id !== tripId);
   if (selectedTripId === tripId) selectedTripId = tripCollection[0]?.id || "";
   saveTripCollection();
-  if (selectedTripId) localStorage.setItem("solsol-selected-trip", selectedTripId);
-  else localStorage.removeItem("solsol-selected-trip");
   renderTripNavigator();
   renderSelectedTrip();
   return true;
@@ -643,13 +712,15 @@ function createTrip(event) {
     summary: { flights: [], stays: [] },
     days: createTripDays(startDate, endDate),
     foodPlan: [],
-    transport: []
+    transport: [],
+    checklist: defaultChecklistItems.slice(),
+    checklistState: {},
+    memo: ""
   };
 
   tripCollection.push(newTrip);
   selectedTripId = newTrip.id;
   saveTripCollection();
-  localStorage.setItem("solsol-selected-trip", selectedTripId);
   closeTripModal();
   renderTripNavigator();
   renderSelectedTrip();
@@ -704,6 +775,7 @@ function renderSelectedTrip() {
     document.querySelector("#transport-container").innerHTML = emptyPanel("교통 정보가 없습니다.", "");
     renderDayNavigation(null);
     renderChecklist();
+    renderMemo();
     document.title = "솔솔부부 여행프로젝트";
     return;
   }
@@ -721,6 +793,7 @@ function renderSelectedTrip() {
   document.querySelector("#food-container").innerHTML = foodPlan.length ? foodPlan.map(renderFoodDay).join("") : emptyPanel("아직 등록된 식사 계획이 없습니다.", "일정 추가 시 ‘식사 일정’을 선택해 보세요.");
   document.querySelector("#transport-container").innerHTML = trip.transport?.length ? trip.transport.map((item, index) => renderTransport(item, index)).join("") : emptyPanel("아직 등록된 교통 정보가 없습니다.", "항공편이나 이동 정보를 추가해 보세요.");
   renderChecklist();
+  renderMemo();
   bindDayNavigation();
 }
 
@@ -793,7 +866,6 @@ function openTripEditor(tripId = selectedTripId) {
   if (!trip) return;
   if (trip.id !== selectedTripId) {
     selectedTripId = trip.id;
-    localStorage.setItem("solsol-selected-trip", selectedTripId);
     renderTripNavigator();
     renderSelectedTrip();
   }
@@ -1108,9 +1180,6 @@ async function saveEditor(event) {
     if (checklistTrip) {
       checklistTrip.checklist = items;
       saveTripCollection();
-      localStorage.removeItem(getChecklistStateKey());
-    } else {
-      localStorage.setItem(checklistItemsKey, JSON.stringify(items));
     }
     renderChecklist();
   }
@@ -1458,38 +1527,29 @@ function bindDayNavigation() {
 }
 
 // ================================
-// 체크리스트 · localStorage 저장
+// 체크리스트 · 공유 저장소 저장
 // ================================
 const defaultChecklistItems = ["여권", "항공권", "버스 승차권", "숙소 예약", "eSIM", "환전", "여행자보험", "보조배터리", "충전기", "우산"];
-const checklistKey = "solsol-checklist";
-const checklistItemsKey = "solsol-checklist-items";
 
 function getChecklistItems() {
   const trip = getSelectedTrip();
-  if (Array.isArray(trip?.checklist)) return trip.checklist;
-  try {
-    const saved = JSON.parse(localStorage.getItem(checklistItemsKey) || "null");
-    return Array.isArray(saved) ? saved : defaultChecklistItems;
-  } catch (error) {
-    return defaultChecklistItems;
-  }
-}
-
-function getChecklistStateKey() {
-  const trip = getSelectedTrip();
-  return `solsol-checklist-${trip?.id || "global"}`;
+  return Array.isArray(trip?.checklist) ? trip.checklist : defaultChecklistItems;
 }
 
 function renderChecklist() {
+  const trip = getSelectedTrip();
   const checklistItems = getChecklistItems();
-  const saved = JSON.parse(localStorage.getItem(getChecklistStateKey()) || localStorage.getItem(checklistKey) || "{}");
+  const saved = trip?.checklistState || {};
   const container = document.querySelector("#checklist");
   container.innerHTML = checklistItems.map((item, index) => `<label class="check-item ${saved[index] ? "checked" : ""}"><input type="checkbox" data-check-index="${index}" ${saved[index] ? "checked" : ""} /><span>${item}</span></label>`).join("");
   updateCheckProgress(saved);
   container.querySelectorAll("input").forEach(input => input.addEventListener("change", event => {
-    const next = JSON.parse(localStorage.getItem(getChecklistStateKey()) || "{}");
+    const currentTrip = getSelectedTrip();
+    if (!currentTrip) return;
+    const next = { ...(currentTrip.checklistState || {}) };
     next[event.target.dataset.checkIndex] = event.target.checked;
-    localStorage.setItem(getChecklistStateKey(), JSON.stringify(next));
+    currentTrip.checklistState = next;
+    saveTripCollection();
     event.target.closest(".check-item").classList.toggle("checked", event.target.checked);
     updateCheckProgress(next);
   }));
@@ -1502,28 +1562,56 @@ function updateCheckProgress(saved) {
 }
 
 // ================================
-// 메모 · localStorage 저장
+// 메모 · 공유 저장소 저장
 // ================================
+function renderMemo() {
+  const memo = document.querySelector("#travel-memo");
+  if (memo) memo.value = getSelectedTrip()?.memo || "";
+}
+
 function bindMemo() {
   const memo = document.querySelector("#travel-memo");
   const status = document.querySelector("#memo-status");
-  memo.value = localStorage.getItem("solsol-travel-memo") || "";
+  renderMemo();
   memo.addEventListener("input", () => {
-    localStorage.setItem("solsol-travel-memo", memo.value);
-    status.textContent = "방금 저장됨 · 이 브라우저에 보관됩니다.";
+    const trip = getSelectedTrip();
+    if (!trip) return;
+    trip.memo = memo.value;
+    saveTripCollection();
+    status.textContent = "방금 저장됨 · 공유 저장소에 보관됩니다.";
   });
 }
 
 // ================================
 // 시작
 // ================================
-tripCollection.forEach(trip => {
-  syncSummaryToSchedule(trip);
-  syncFoodPlanFromEvents(trip);
-});
-saveTripCollection();
-renderTripNavigator();
-renderSelectedTrip();
-bindMemo();
-bindTripCreation();
-bindEditorControls();
+async function startApp() {
+  updateSyncStatus(sharedApiUrl ? "공유 저장소 불러오는 중" : "공유 저장소 URL 미설정", !sharedApiUrl);
+  let shouldSave = false;
+
+  try {
+    const remote = await loadSharedTripCollection();
+    tripCollection = remote.trips.length ? remote.trips : cloneTrips(initialTripCollection);
+    selectedTripId = tripCollection[0]?.id || "";
+    shouldSave = Boolean(sharedApiUrl);
+    updateSyncStatus(!remote.configured ? "공유 저장소 URL 미설정" : (remote.trips.length ? "공유 저장소 연결됨" : "기본 여행을 공유 저장소에 등록하는 중"), !remote.configured);
+  } catch (error) {
+    tripCollection = cloneTrips(initialTripCollection);
+    selectedTripId = tripCollection[0]?.id || "";
+    updateSyncStatus("공유 저장소 연결 실패", true);
+    console.error(error);
+  }
+
+  tripCollection.forEach(trip => {
+    syncSummaryToSchedule(trip);
+    syncFoodPlanFromEvents(trip);
+  });
+  renderTripNavigator();
+  renderSelectedTrip();
+  bindMemo();
+  bindTripCreation();
+  bindEditorControls();
+  if (shouldSave) saveTripCollection();
+}
+
+startApp();
