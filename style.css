@@ -158,7 +158,6 @@ button { color: inherit; }
 #editor-fields input:focus, #editor-fields select:focus, #editor-fields textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,0,0,.1); }
 .time-select-field { min-width: 0; }
 .time-select-group { display: grid; grid-template-columns: 1.35fr .8fr .8fr; gap: 7px; }
-.time-select-group:has(select[name$="Special"]) { grid-template-columns: 1.35fr .8fr .8fr; }
 .check-field { display: flex !important; align-items: center; gap: 8px !important; }
 .check-field input { width: 17px !important; height: 17px; accent-color: var(--accent); }
 .category-editor-list { display: grid; gap: 8px; }
@@ -367,11 +366,12 @@ h1 span { color: #d8d8d8; }
   .site-header { width: 100%; padding: 20px 14px 12px; }
   .header-note { display: none; }
   .navigator-character { flex-basis: 82px; width: 82px; height: 48px; }
-  .hero { min-height: 310px; padding: 27px 25px; border-radius: 24px; }
-  .hero-actions { top: 20px; right: 20px; max-width: 70%; }
-  .hero-copy { padding-top: 34px; }
+  .hero { min-height: 385px; padding: 25px 20px 92px; border-radius: 24px; }
+  .hero-actions { position: relative; top: auto; right: auto; max-width: none; justify-content: flex-start; margin-top: 14px; }
+  .hero-copy { padding-top: 0; }
   h1 { margin-top: 20px; font-size: clamp(38px, 12vw, 54px); }
-  .route-flow { left: 25px; right: 25px; bottom: 20px; gap: 4px; }
+  .route-flow { left: 20px; right: 20px; bottom: 18px; justify-content: flex-start; gap: 12px; padding-bottom: 3px; overflow-x: auto; scrollbar-width: thin; }
+  .route-stop { flex: 0 0 auto; }
   .route-stop { gap: 5px; font-size: 10px; }
   .route-stop b { width: 24px; height: 24px; font-size: 10px; }
   .route-stop small { font-size: 8px; }
@@ -380,34 +380,53 @@ h1 span { color: #d8d8d8; }
   .section-block { margin-bottom: 72px; }
   .split-heading { display: block; }
   .split-heading .section-caption { margin-top: 12px; }
+  .section-heading-with-actions { display: block; }
+  .section-heading-with-actions .section-actions { margin-top: 12px; justify-content: flex-start; }
   .info-card { padding: 20px; border-radius: 19px; }
-  .flight-row { grid-template-columns: 1fr 55px 15px 55px; gap: 7px; }
+  .flight-row { grid-template-columns: minmax(0, 1fr) 55px 15px 55px; gap: 7px; padding-right: 34px; }
+  .flight-row > div { min-width: 0; }
+  .flight-row .item-actions { top: 4px; right: 0; }
   .flight-row h3 { font-size: 14px; }
   .flight-row p { font-size: 10px; }
   .airport b { font-size: 16px; }
   .airport span { font-size: 14px; }
   .airport small { font-size: 8px; white-space: normal; line-height: 1.2; }
   .flight-arrow { font-size: 15px; }
-  .day-header { padding: 22px 20px; }
+  .day-header { display: block; padding: 22px 20px; }
   .day-header h3 { font-size: 21px; }
-  .day-header-actions { flex-wrap: wrap; justify-content: end; }
+  .day-location { margin-top: 4px; text-align: left; }
+  .day-header-actions { flex-wrap: wrap; justify-content: flex-start; margin-top: 14px; }
   .timeline { padding-left: 18px; padding-right: 18px; }
-  .timeline-item { grid-template-columns: 61px 18px minmax(0, 1fr); gap: 7px; padding: 19px 0; }
+  .timeline-item { grid-template-columns: 61px 18px minmax(0, 1fr); gap: 7px; padding: 19px 48px 19px 0; }
+  .timeline-item .item-actions { top: 15px; right: 0; }
   .timeline-time { font-size: 11px; }
   .timeline-content h4 { font-size: 15px; }
   .timeline-place, .timeline-note { font-size: 11px; }
   .timeline-item .item-actions, .flight-row .item-actions, .transport-route .item-actions { opacity: 1; }
   .food-grid, .transport-grid { grid-template-columns: 1fr; }
   .transport-card.flight-transport { grid-column: auto; }
-  .transport-route { gap: 10px; }
+  .stay-title { display: block; }
+  .stay-title h3 { padding-right: 0; }
+  .stay-title .card-actions { margin-top: 8px; justify-content: flex-start; }
+  .transport-label { flex-wrap: wrap; gap: 8px; margin-bottom: 17px; }
+  .transport-label .small-action { margin-left: auto; }
+  .transport-route { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; padding-top: 27px; }
+  .transport-route > div { min-width: 0; }
+  .transport-route .item-actions { top: 0; right: 0; }
   .transport-route strong { font-size: 17px; }
+  .transport-route p { overflow-wrap: anywhere; }
   .tools-grid { gap: 12px; }
   .tool-card { padding: 21px; border-radius: 19px; }
+  .tool-heading { flex-wrap: wrap; }
+  .tool-heading > .card-actions { width: 100%; justify-content: space-between; }
   .checklist { gap: 10px 8px; }
   .check-item { font-size: 11px; }
   .site-footer { display: block; line-height: 2; }
   .site-footer span { display: block; }
   .modal-card { padding: 27px 21px; }
+  .modal-actions { flex-wrap: wrap; }
+  .modal-actions .danger-button { flex: 1 0 100%; margin-right: 0; }
+  .modal-actions > :not(.danger-button) { flex: 1; }
   .editor-grid { grid-template-columns: 1fr; gap: 12px; }
   .editor-full { grid-column: auto; }
   .category-editor-row { grid-template-columns: 42px 1fr 34px; }
