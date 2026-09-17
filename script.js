@@ -503,6 +503,8 @@ function getStayDateValues(stay, trip) {
   let startDate = stay?.startDate || "";
   let endDate = stay?.endDate || "";
   const year = String(trip?.startDate || new Date().toISOString().slice(0, 10)).slice(0, 4);
+  if (startDate && !/^20\d{2}-\d{2}-\d{2}$/.test(startDate)) startDate = isoDateFromText(startDate, year);
+  if (endDate && !/^20\d{2}-\d{2}-\d{2}$/.test(endDate)) endDate = isoDateFromText(endDate, year);
   const legacyDates = String(stay?.dates || "");
   const dates = [...legacyDates.matchAll(/(20\d{2})[.-](\d{1,2})[.-](\d{1,2})|(\d{1,2})\/(\d{1,2})/g)].map(match => {
     const [, fullYear, fullMonth, fullDay, shortMonth, shortDay] = match;
@@ -875,6 +877,44 @@ function openTripEditor(tripId = selectedTripId) {
   openEditorModal("trip", "여행 기본 정보 편집", "왼쪽 여행 목록과 페이지 상단에 표시되는 정보를 수정합니다.", fields, { tripId: trip.id });
 }
 
+function parseClockTime(value = "") {
+  const match = String(value).match(/(?:^|\D)([01]?\d|2[0-3])[:.]([0-5]\d)(?:\D|$)/);
+  return match ? { hour: String(match[1]).padStart(2, "0"), minute: String(match[2]).padStart(2, "0") } : { hour: "", minute: "" };
+}
+
+function timeSelectFields(name, label, value = "", options = {}) {
+  const parsed = parseClockTime(value);
+  const specialValues = options.specialValues || [];
+  const specialValue = specialValues.includes(value) ? value : "";
+  const specialSelect = specialValues.length
+    ? `<select name="${escapeHtml(name)}Special" aria-label="${escapeHtml(label)} 방식"><option value="" ${specialValue ? "" : "selected"}>직접 시간 선택</option>${specialValues.map(item => `<option value="${escapeHtml(item)}" ${item === specialValue ? "selected" : ""}>${escapeHtml(item)}</option>`).join("")}</select>`
+    : "";
+  const required = options.required && !specialValues.length ? " required" : "";
+  const hourOptions = `<option value="">시</option>${Array.from({ length: 24 }, (_, hour) => { const valueText = String(hour).padStart(2, "0"); return `<option value="${valueText}" ${valueText === parsed.hour ? "selected" : ""}>${valueText}</option>`; }).join("")}`;
+  const minuteOptions = `<option value="">분</option>${Array.from({ length: 60 }, (_, minute) => { const valueText = String(minute).padStart(2, "0"); return `<option value="${valueText}" ${valueText === parsed.minute ? "selected" : ""}>${valueText}</option>`; }).join("")}`;
+  return `<label class="time-select-field ${options.full ? "editor-full" : ""}">${escapeHtml(label)}<div class="time-select-group">${specialSelect}<select name="${escapeHtml(name)}Hour" aria-label="${escapeHtml(label)} 시"${required}>${hourOptions}</select><select name="${escapeHtml(name)}Minute" aria-label="${escapeHtml(label)} 분"${required}>${minuteOptions}</select></div></label>`;
+}
+
+function readTimeValue(form, name, fallback = "") {
+  const special = form.elements[`${name}Special`]?.value?.trim() || "";
+  if (special) return special;
+  const hour = form.elements[`${name}Hour`]?.value || "";
+  const minute = form.elements[`${name}Minute`]?.value || "";
+  if (hour === "" || minute === "") return fallback;
+  return `${hour}:${minute}`;
+}
+
+function getTransportRouteDate(route, trip) {
+  const raw = String(route?.date || "");
+  if (/^20\d{2}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return isoDateFromText(raw, String(trip?.startDate || trip?.heroYear || "").slice(0, 4)) || "";
+}
+
+function formatTransportDate(route, trip) {
+  const isoDate = getTransportRouteDate(route, trip);
+  return isoDate ? formatDateLabel(isoDate) : route?.date || "날짜 미정";
+}
+
 function openFlightEditor(index = null) {
   const trip = getSelectedTrip();
   if (!trip) return;
@@ -885,10 +925,10 @@ function openFlightEditor(index = null) {
     ${inputField("airline", "항공사 · 편명", flight.airline || "", { placeholder: "예: Asiana Airlines OZ134", required: true })}
     ${inputField("title", "구간 이름", flight.title || "인천 → 후쿠오카", { full: true })}
     ${inputField("fromCode", "출발 공항 코드", flight.fromCode || "ICN", { required: true })}
-    ${inputField("fromTime", "출발 시각", flight.fromTime || "", { placeholder: "13:55", required: true })}
+    ${timeSelectFields("fromTime", "출발 시각", flight.fromTime || "", { required: true })}
     ${inputField("fromPlace", "출발 공항 이름", flight.fromPlace || "", { required: true })}
     ${inputField("toCode", "도착 공항 코드", flight.toCode || "FUK", { required: true })}
-    ${inputField("toTime", "도착 시각", flight.toTime || "", { placeholder: "15:25", required: true })}
+    ${timeSelectFields("toTime", "도착 시각", flight.toTime || "", { required: true })}
     ${inputField("toPlace", "도착 공항 이름", flight.toPlace || "", { required: true })}
   </div>`;
   openEditorModal("flight", index === null ? "항공편 추가" : "항공편 수정", "공개해도 안전한 항공편 정보만 입력하세요.", fields, { index });
@@ -908,9 +948,8 @@ function openStayEditor(index = null) {
     ${textareaField("note", "메모", stay.note || "", { full: true, placeholder: "숙소에 대한 메모" })}
     ${inputField("mapUrl", "지도 링크", stay.mapUrl || "", { full: true, placeholder: "https://maps.google.com/..." })}
     <label class="editor-full">예약확인서 파일<input name="attachmentFile" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" /></label>
-    ${inputField("attachmentPath", "GitHub 예약확인서 경로", stay.attachment?.kind === "github" ? stay.attachment.url : "", { full: true, placeholder: "assets/files/숙소예약확인서.pdf" })}
     ${stay.attachment ? checkboxField("removeAttachment", "기존 예약확인서 삭제") : ""}
-    <p class="file-note editor-full">예약확인서는 브라우저에 저장하거나 GitHub의 assets/files 폴더 경로를 입력할 수 있습니다.</p>
+    <p class="file-note editor-full">파일을 선택하면 Google Drive에 저장되어 두 사람 모두 확인할 수 있습니다.</p>
   </div>`;
   openEditorModal("stay", index === null ? "숙소 추가" : "숙소 수정", "숙소명·지역·숙박 기간과 예약확인서를 관리합니다.", fields, { index });
 }
@@ -920,9 +959,10 @@ function openDayEditor(index = null) {
   if (!trip) return;
   const day = index === null ? {} : (trip.days?.[index] || {});
   const nextNumber = (trip.days?.length || 0) + 1;
+  const dayDate = getDayIsoDate(day, trip);
   const fields = `<div class="editor-grid">
     ${inputField("day", "일정 이름", day.day || `DAY ${nextNumber}`, { required: true })}
-    ${inputField("date", "날짜", day.date || "", { placeholder: "2026.09.22 TUE", required: true })}
+    ${inputField("date", "날짜", dayDate, { type: "date", required: true })}
     ${inputField("location", "지역", day.location || "")}
     ${inputField("locationDetail", "지역 설명", day.locationDetail || "")}
   </div>`;
@@ -930,21 +970,7 @@ function openDayEditor(index = null) {
 }
 
 function scheduleTimeField(value = "") {
-  const specialTimes = ["미정", "숙박", "오전", "오후", "아침", "점심", "저녁"];
-  const selected = value || "미정";
-  const specialOptions = specialTimes.map(time => `<option value="${escapeHtml(time)}" ${time === selected ? "selected" : ""}>${escapeHtml(time)}${time === "미정" ? " (시간 미정)" : ""}</option>`).join("");
-  const hourOptions = Array.from({ length: 24 }, (_, hour) => {
-    const options = Array.from({ length: 12 }, (_, index) => {
-      const minute = index * 5;
-      const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-      return `<option value="${time}" ${time === selected ? "selected" : ""}>${time}</option>`;
-    }).join("");
-    return `<optgroup label="${String(hour).padStart(2, "0")}시">${options}</optgroup>`;
-  }).join("");
-  const customOption = selected && !specialTimes.includes(selected) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(selected)
-    ? `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`
-    : "";
-  return `<label>시간<select name="time" required>${specialOptions}${customOption}${hourOptions}</select></label>`;
+  return timeSelectFields("time", "시간", value || "미정", { specialValues: ["미정", "숙박", "오전", "오후", "아침", "점심", "저녁"] });
 }
 
 function openEventEditor(dayId, eventIndex = null) {
@@ -963,9 +989,8 @@ function openEventEditor(dayId, eventIndex = null) {
     ${inputField("mapUrl", "지도 링크", event.mapUrl || "", { full: true, placeholder: "https://maps.google.com/..." })}
     ${inputField("reservationUrl", "예약 링크", event.reservationUrl || "", { full: true, placeholder: "예약 확인 URL" })}
     <label class="editor-full">파일 첨부<input name="attachmentFile" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" /></label>
-    ${inputField("attachmentPath", "GitHub 파일 경로", event.attachment?.kind === "github" ? event.attachment.url : "", { full: true, placeholder: "assets/files/버스승차권.pdf" })}
     ${event.attachment ? checkboxField("removeAttachment", "기존 첨부 파일 삭제") : ""}
-    <p class="file-note editor-full">파일 선택은 현재 브라우저에 저장됩니다. GitHub에 보관하려면 파일을 assets/files 폴더에 넣고 위 경로를 입력하세요.</p>
+    <p class="file-note editor-full">파일을 선택하면 Google Drive에 저장되어 두 사람 모두 확인할 수 있습니다.</p>
     <div class="editor-grid editor-full">${selectField("mealType", "식사 구분", event.mealType || inferMealType(event), [{ value: "아침", label: "아침" }, { value: "점심", label: "점심" }, { value: "저녁", label: "저녁" }])}${checkboxField("meal", "식사 일정으로 표시", Boolean(event.meal))}${checkboxField("movement", "이동 일정으로 표시", Boolean(event.movement))}</div>
   </div>`;
   openEditorModal("event", eventIndex === null ? "일정 추가" : "일정 수정", `${day.date} · ${day.location}`, fields, { dayId, eventIndex });
@@ -994,9 +1019,9 @@ function openTransportEditor(transportIndex = null, routeIndex = null) {
   const fields = `<div class="editor-grid">
     ${selectField("category", "교통 종류", item.category || "bus", [{ value: "flight", label: "✈ FLIGHT" }, { value: "bus", label: "🚌 BUS" }])}
     ${inputField("label", "그룹 이름", item.label || (item.category === "flight" ? "FLIGHT" : "YUFUIN BUS"), { required: true })}
-    ${inputField("date", "날짜", route.date || "", { required: true })}
+    ${inputField("date", "날짜", getTransportRouteDate(route, trip), { type: "date", required: true })}
     ${inputField("code", "편명 / 노선 번호", route.code || "")}
-    ${inputField("time", "출발 시각", route.time || ((route.from || "").split(" ")[1] || ""), { required: true })}
+    ${timeSelectFields("time", "출발 시각", route.time || ((route.from || "").split(" ")[1] || ""), { required: true })}
     ${inputField("from", "출발지", route.from || "", { required: true })}
     ${inputField("to", "도착지", route.to || "", { required: true })}
     ${inputField("detail", "추가 정보", route.detail || "", { full: true, placeholder: "좌석, 운영사 등" })}
@@ -1053,15 +1078,13 @@ function readFileAsDataUrl(file) {
 async function getAttachmentFromForm(form, existingAttachment) {
   if (form.elements.removeAttachment?.checked) return null;
   const file = form.elements.attachmentFile?.files?.[0];
-  const githubPath = form.elements.attachmentPath?.value?.trim() || "";
   if (file) {
     if (file.size > 3 * 1024 * 1024) {
-      window.alert("브라우저 저장 첨부 파일은 3MB 이하만 사용할 수 있습니다. 큰 파일은 GitHub 경로를 입력해 주세요.");
+      window.alert("첨부 파일은 3MB 이하만 선택할 수 있습니다.");
       return existingAttachment || null;
     }
     return { kind: "local", name: file.name, type: file.type, data: await readFileAsDataUrl(file) };
   }
-  if (githubPath) return { kind: "github", name: githubPath.split(/[\\/]/).pop(), url: githubPath };
   return existingAttachment || null;
 }
 
@@ -1111,7 +1134,13 @@ async function saveEditor(event) {
   if (editorState.mode === "flight") {
     trip.summary = trip.summary || { flights: [], stays: [] };
     const existingFlight = index === null || index === undefined ? null : (trip.summary.flights[index] || null);
-    const flight = { id: existingFlight?.id || `flight-${Date.now()}`, label: value("label"), date: value("date"), title: value("title"), airline: value("airline"), fromCode: value("fromCode"), fromTime: value("fromTime"), fromPlace: value("fromPlace"), toCode: value("toCode"), toTime: value("toTime"), toPlace: value("toPlace") };
+    const fromTime = readTimeValue(form, "fromTime");
+    const toTime = readTimeValue(form, "toTime");
+    if (!fromTime || !toTime) {
+      window.alert("출발 시각과 도착 시각을 모두 선택해 주세요.");
+      return;
+    }
+    const flight = { id: existingFlight?.id || `flight-${Date.now()}`, label: value("label"), date: value("date"), title: value("title"), airline: value("airline"), fromCode: value("fromCode"), fromTime, fromPlace: value("fromPlace"), toCode: value("toCode"), toTime, toPlace: value("toPlace") };
     if (index === null || index === undefined) trip.summary.flights.push(flight);
     else trip.summary.flights[index] = flight;
     syncFlightTransport(trip);
@@ -1143,7 +1172,13 @@ async function saveEditor(event) {
   }
 
   if (editorState.mode === "day") {
-    const day = { id: editorState.context.dayId || `day-${Date.now()}`, day: value("day"), date: value("date"), shortDate: value("date"), weekday: "", location: value("location"), locationDetail: value("locationDetail"), events: index === null || index === undefined ? [] : (trip.days[index]?.events || []) };
+    const isoDate = value("date");
+    if (!isoDate) {
+      window.alert("날짜를 캘린더에서 선택해 주세요.");
+      return;
+    }
+    const dateObject = new Date(`${isoDate}T00:00:00`);
+    const day = { id: editorState.context.dayId || `day-${isoDate}`, isoDate, day: value("day"), date: formatDateLabel(isoDate), shortDate: `${dateObject.getMonth() + 1}/${dateObject.getDate()}`, weekday: weekdayLabels[dateObject.getDay()], location: value("location"), locationDetail: value("locationDetail"), events: index === null || index === undefined ? [] : (trip.days[index]?.events || []) };
     if (index === null || index === undefined) trip.days.push(day);
     else trip.days[index] = day;
     saveTripCollection();
@@ -1155,7 +1190,12 @@ async function saveEditor(event) {
     if (!day) return;
     const existingEvent = editorState.context.eventIndex === null || editorState.context.eventIndex === undefined ? null : (day.events[editorState.context.eventIndex] || null);
     const attachment = await getAttachmentFromForm(form, existingEvent?.attachment);
-    const eventItem = { time: value("time"), type: value("type"), title: value("title"), place: value("place"), note: value("note"), status: value("status") || "planned", mapUrl: value("mapUrl"), reservationUrl: value("reservationUrl"), attachment, mealType: form.elements.meal?.checked ? value("mealType") : "", meal: Boolean(form.elements.meal?.checked), movement: Boolean(form.elements.movement?.checked) };
+    const eventTime = readTimeValue(form, "time");
+    if (!eventTime) {
+      window.alert("시간을 드롭다운에서 선택해 주세요.");
+      return;
+    }
+    const eventItem = { time: eventTime, type: value("type"), title: value("title"), place: value("place"), note: value("note"), status: value("status") || "planned", mapUrl: value("mapUrl"), reservationUrl: value("reservationUrl"), attachment, mealType: form.elements.meal?.checked ? value("mealType") : "", meal: Boolean(form.elements.meal?.checked), movement: Boolean(form.elements.movement?.checked) };
     if (editorState.context.eventIndex === null || editorState.context.eventIndex === undefined) day.events.push(eventItem);
     else day.events[editorState.context.eventIndex] = eventItem;
     syncFoodPlanFromEvents(trip);
@@ -1166,7 +1206,12 @@ async function saveEditor(event) {
   if (editorState.mode === "transport") {
     trip.transport = trip.transport || [];
     const category = value("category") || "bus";
-    const route = { date: value("date"), code: value("code"), time: value("time"), from: value("from"), to: value("to"), detail: value("detail") };
+    const routeTime = readTimeValue(form, "time");
+    if (!value("date") || !routeTime) {
+      window.alert("날짜와 출발 시각을 모두 선택해 주세요.");
+      return;
+    }
+    const route = { date: value("date"), code: value("code"), time: routeTime, from: value("from"), to: value("to"), detail: value("detail") };
     let transportIndex = editorState.context.transportIndex;
     if (transportIndex === null || transportIndex === undefined) {
       transportIndex = trip.transport.findIndex(item => item.category === category);
@@ -1262,7 +1307,9 @@ function syncFoodPlanFromEvents(trip) {
 }
 
 function getFlightDateValue(flight, trip) {
-  return flight?.date || isoDateFromText(flight?.label, String(trip?.startDate || "").slice(0, 4)) || trip?.startDate || "";
+  const year = String(trip?.startDate || trip?.heroYear || "").slice(0, 4);
+  if (/^20\d{2}-\d{2}-\d{2}$/.test(flight?.date || "")) return flight.date;
+  return isoDateFromText(flight?.date, year) || isoDateFromText(flight?.label, year) || trip?.startDate || "";
 }
 
 function getDayIsoDate(day, trip) {
@@ -1360,7 +1407,7 @@ function syncFlightTransport(trip) {
     return;
   }
   const routes = flights.map(flight => ({
-    date: flight.date ? `${flight.date.slice(5, 7)}.${flight.date.slice(8, 10)}` : (flight.label?.match(/\d{2}\.\d{2}/)?.[0] || ""),
+    date: flight.date || (flight.label?.match(/\d{2}\.\d{2}/)?.[0] || ""),
     code: (flight.airline || "").split(" ").pop() || "",
     time: flight.fromTime || "",
     from: `${flight.fromCode || ""} ${flight.fromTime || ""}`.trim(),
@@ -1549,8 +1596,9 @@ function renderFoodDay(day) {
 
 function renderTransport(item, itemIndex) {
   const isFlight = item.category === "flight";
+  const trip = getSelectedTrip();
   return `<article class="transport-card ${isFlight ? "flight-transport" : ""}"><div class="transport-label"><span>${isFlight ? "✈" : "🚌"}</span>${escapeHtml(item.label)}<button class="small-action" data-action="edit-transport-label" data-transport-index="${itemIndex}" type="button">이름 수정</button></div>${item.routes.map((route, routeIndex) => `
-    <div class="transport-route"><div><small>${escapeHtml(route.date)}</small><strong>${escapeHtml(isFlight ? (route.from || "").split(" ")[0] : route.time)}</strong><p>${escapeHtml(route.from)}</p></div><div class="transport-arrow">→</div><div><small>${escapeHtml(isFlight ? route.code : route.code + "편")}</small><strong>${escapeHtml(isFlight ? (route.to || "").split(" ")[0] : "")}</strong><p>${escapeHtml(route.to)}</p></div><div class="item-actions"><button class="icon-action" data-action="edit-transport" data-transport-index="${itemIndex}" data-route-index="${routeIndex}" type="button" title="교통 수정">✎</button><button class="icon-action danger" data-action="delete-transport" data-transport-index="${itemIndex}" data-route-index="${routeIndex}" type="button" title="교통 삭제">×</button></div></div>
+    <div class="transport-route"><div><small>${escapeHtml(formatTransportDate(route, trip))}</small><strong>${escapeHtml(isFlight ? (route.from || "").split(" ")[0] : route.time)}</strong><p>${escapeHtml(route.from)}</p></div><div class="transport-arrow">→</div><div><small>${escapeHtml(isFlight ? route.code : route.code + "편")}</small><strong>${escapeHtml(isFlight ? (route.to || "").split(" ")[0] : "")}</strong><p>${escapeHtml(route.to)}</p></div><div class="item-actions"><button class="icon-action" data-action="edit-transport" data-transport-index="${itemIndex}" data-route-index="${routeIndex}" type="button" title="교통 수정">✎</button><button class="icon-action danger" data-action="delete-transport" data-transport-index="${itemIndex}" data-route-index="${routeIndex}" type="button" title="교통 삭제">×</button></div></div>
     ${route.detail ? `<div class="bus-detail"><b>${escapeHtml(route.time || "")}</b> · ${escapeHtml(route.detail)}</div>` : ""}
   `).join("")}</article>`;
 }

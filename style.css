@@ -156,6 +156,9 @@ button { color: inherit; }
 #editor-fields input, #editor-fields select, #editor-fields textarea { width: 100%; padding: 11px 12px; outline: 0; border: 1px solid var(--border); border-radius: 10px; color: var(--text); background: #f8f8f8; font-size: 12px; font-weight: 500; }
 #editor-fields textarea { min-height: 88px; resize: vertical; line-height: 1.6; }
 #editor-fields input:focus, #editor-fields select:focus, #editor-fields textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,0,0,.1); }
+.time-select-field { min-width: 0; }
+.time-select-group { display: grid; grid-template-columns: 1.35fr .8fr .8fr; gap: 7px; }
+.time-select-group:has(select[name$="Special"]) { grid-template-columns: 1.35fr .8fr .8fr; }
 .check-field { display: flex !important; align-items: center; gap: 8px !important; }
 .check-field input { width: 17px !important; height: 17px; accent-color: var(--accent); }
 .category-editor-list { display: grid; gap: 8px; }
