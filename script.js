@@ -718,7 +718,7 @@ function createTrip(event) {
     checklist: defaultChecklistItems.slice(),
     checklistState: {},
     memo: "",
-    toolAttachments: { checklist: { attachment: null }, memo: { attachment: null } }
+    toolAttachments: { checklist: { attachments: [] }, memo: { attachments: [] } }
   };
 
   tripCollection.push(newTrip);
@@ -1095,13 +1095,17 @@ const toolAttachmentConfig = {
 };
 
 function getToolAttachment(trip, slot) {
-  return trip?.toolAttachments?.[slot]?.attachment || null;
+  const entry = trip?.toolAttachments?.[slot];
+  if (Array.isArray(entry?.attachments)) {
+    return entry.attachments.map(item => item?.attachment || item).filter(Boolean);
+  }
+  return entry?.attachment ? [entry.attachment] : [];
 }
 
-function setToolAttachment(trip, slot, attachment) {
+function setToolAttachments(trip, slot, attachments) {
   if (!trip) return;
   trip.toolAttachments = trip.toolAttachments || {};
-  trip.toolAttachments[slot] = { attachment: attachment || null };
+  trip.toolAttachments[slot] = { attachments: (attachments || []).map(attachment => ({ attachment })) };
 }
 
 function renderToolAttachment(slot, statusMessage = "") {
@@ -1110,15 +1114,15 @@ function renderToolAttachment(slot, statusMessage = "") {
   if (!container) return;
 
   const trip = getSelectedTrip();
-  const attachment = getToolAttachment(trip, slot);
-  const attachmentMarkup = attachment
-    ? `<div class="tool-attachment-file">${renderAttachment(attachment)}<button class="text-link tool-attachment-remove" data-tool-attachment-remove="${slot}" type="button">삭제</button></div>`
+  const attachments = getToolAttachment(trip, slot);
+  const attachmentMarkup = attachments.length
+    ? attachments.map((attachment, index) => `<div class="tool-attachment-file">${renderAttachment(attachment)}<button class="text-link tool-attachment-remove" data-tool-attachment-remove="${slot}" data-tool-attachment-index="${index}" type="button">삭제</button></div>`).join("")
     : `<span class="tool-attachment-empty">첨부된 파일 없음</span>`;
-  const message = statusMessage || (attachment ? "Google Drive에 저장됨" : "Google Drive에 저장됩니다.");
+  const message = statusMessage || (attachments.length ? `${attachments.length}개 파일 · Google Drive에 저장됨` : "Google Drive에 저장됩니다.");
 
   container.innerHTML = `
     <div class="tool-attachment-head">
-      <label class="file-button">+ ${config.label}<input id="${config.inputId}" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" ${trip ? "" : "disabled"} /></label>
+      <label class="file-button">+ ${config.label}<input id="${config.inputId}" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple ${trip ? "" : "disabled"} /></label>
       <span class="tool-attachment-status">${escapeHtml(message)}</span>
     </div>
     ${attachmentMarkup}
@@ -1126,29 +1130,33 @@ function renderToolAttachment(slot, statusMessage = "") {
 
   const input = container.querySelector(`#${config.inputId}`);
   input?.addEventListener("change", async event => {
-    const file = event.target.files?.[0];
+    const files = [...(event.target.files || [])];
     const currentTrip = getSelectedTrip();
-    if (!file || !currentTrip) return;
-    if (file.size > 3 * 1024 * 1024) {
-      window.alert("첨부 파일은 3MB 이하만 선택할 수 있습니다.");
+    if (!files.length || !currentTrip) return;
+    const oversized = files.find(file => file.size > 3 * 1024 * 1024);
+    if (oversized) {
+      window.alert("첨부 파일은 파일 하나당 3MB 이하만 선택할 수 있습니다.");
       renderToolAttachment(slot);
       return;
     }
 
-    setToolAttachment(currentTrip, slot, { kind: "local", name: file.name, type: file.type, data: await readFileAsDataUrl(file) });
+    const newAttachments = await Promise.all(files.map(async file => ({ kind: "local", name: file.name, type: file.type, data: await readFileAsDataUrl(file) })));
+    setToolAttachments(currentTrip, slot, [...getToolAttachment(currentTrip, slot), ...newAttachments]);
     renderToolAttachment(slot, "Google Drive에 저장하는 중...");
     const saved = await saveTripCollection();
     if (!saved) renderToolAttachment(slot, "저장에 실패했습니다. 다시 시도해 주세요.");
   });
 
-  container.querySelector("[data-tool-attachment-remove]")?.addEventListener("click", async () => {
+  container.querySelectorAll("[data-tool-attachment-remove]").forEach(button => button.addEventListener("click", async () => {
     const currentTrip = getSelectedTrip();
     if (!currentTrip || !window.confirm("이 첨부 파일을 삭제할까요?")) return;
-    setToolAttachment(currentTrip, slot, null);
+    const index = Number(button.dataset.toolAttachmentIndex);
+    const nextAttachments = getToolAttachment(currentTrip, slot).filter((_, attachmentIndex) => attachmentIndex !== index);
+    setToolAttachments(currentTrip, slot, nextAttachments);
     renderToolAttachment(slot, "삭제하는 중...");
     const saved = await saveTripCollection();
     if (!saved) renderToolAttachment(slot, "삭제 저장에 실패했습니다.");
-  });
+  }));
 }
 
 async function saveEditor(event) {
@@ -1744,13 +1752,14 @@ function bindMemo() {
 // ================================
 async function startApp() {
   updateSyncStatus(sharedApiUrl ? "공유 저장소 불러오는 중" : "공유 저장소 URL 미설정", !sharedApiUrl);
-  let shouldSave = false;
+  let shouldSeedSharedStorage = false;
 
   try {
     const remote = await loadSharedTripCollection();
-    tripCollection = remote.trips.length ? remote.trips : cloneTrips(initialTripCollection);
+    const hasRemoteTrips = remote.trips.length > 0;
+    tripCollection = hasRemoteTrips ? remote.trips : cloneTrips(initialTripCollection);
     selectedTripId = tripCollection[0]?.id || "";
-    shouldSave = Boolean(sharedApiUrl);
+    shouldSeedSharedStorage = Boolean(sharedApiUrl && !hasRemoteTrips);
     updateSyncStatus(!remote.configured ? "공유 저장소 URL 미설정" : (remote.trips.length ? "공유 저장소 연결됨" : "기본 여행을 공유 저장소에 등록하는 중"), !remote.configured);
   } catch (error) {
     tripCollection = cloneTrips(initialTripCollection);
@@ -1759,16 +1768,12 @@ async function startApp() {
     console.error(error);
   }
 
-  tripCollection.forEach(trip => {
-    syncSummaryToSchedule(trip);
-    syncFoodPlanFromEvents(trip);
-  });
   renderTripNavigator();
   renderSelectedTrip();
   bindMemo();
   bindTripCreation();
   bindEditorControls();
-  if (shouldSave) saveTripCollection();
+  if (shouldSeedSharedStorage) saveTripCollection();
 }
 
 startApp();
