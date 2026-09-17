@@ -929,6 +929,24 @@ function openDayEditor(index = null) {
   openEditorModal("day", index === null ? "일자 추가" : "일자 수정", "여행 날짜와 지역 정보를 관리합니다.", fields, { index });
 }
 
+function scheduleTimeField(value = "") {
+  const specialTimes = ["미정", "숙박", "오전", "오후", "아침", "점심", "저녁"];
+  const selected = value || "미정";
+  const specialOptions = specialTimes.map(time => `<option value="${escapeHtml(time)}" ${time === selected ? "selected" : ""}>${escapeHtml(time)}${time === "미정" ? " (시간 미정)" : ""}</option>`).join("");
+  const hourOptions = Array.from({ length: 24 }, (_, hour) => {
+    const options = Array.from({ length: 12 }, (_, index) => {
+      const minute = index * 5;
+      const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+      return `<option value="${time}" ${time === selected ? "selected" : ""}>${time}</option>`;
+    }).join("");
+    return `<optgroup label="${String(hour).padStart(2, "0")}시">${options}</optgroup>`;
+  }).join("");
+  const customOption = selected && !specialTimes.includes(selected) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(selected)
+    ? `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`
+    : "";
+  return `<label>시간<select name="time" required>${specialOptions}${customOption}${hourOptions}</select></label>`;
+}
+
 function openEventEditor(dayId, eventIndex = null) {
   const trip = getSelectedTrip();
   const day = trip?.days?.find(item => item.id === dayId);
@@ -936,7 +954,7 @@ function openEventEditor(dayId, eventIndex = null) {
   const event = eventIndex === null ? {} : (day.events?.[eventIndex] || {});
   const categoryList = categoryOptions(trip, event.type || "place");
   const fields = `<div class="editor-grid">
-    ${inputField("time", "시간", event.time || "", { placeholder: "19:00", required: true })}
+    ${scheduleTimeField(event.time || "미정")}
     ${selectField("type", "분류", event.type || categoryList[0]?.value || "place", categoryList)}
     ${inputField("title", "일정명", event.title || "", { required: true, full: true })}
     ${inputField("place", "장소", event.place || "", { full: true })}
@@ -1463,11 +1481,37 @@ function renderSummary(summary, trip) {
   `;
 }
 
+function eventTimeSortValue(value) {
+  const text = String(value || "").trim().toLowerCase();
+  const clock = text.match(/(?:^|\s)([01]?\d|2[0-3])[:.]([0-5]\d)(?:\s|$)/);
+  if (clock) return Number(clock[1]) * 60 + Number(clock[2]);
+  const koreanClock = text.match(/(오전|오후)?\s*([1-9]|1[0-2])시(?:\s*([0-5]\d)분?)?/);
+  if (koreanClock) {
+    let hour = Number(koreanClock[2]);
+    const minute = Number(koreanClock[3] || 0);
+    if (koreanClock[1] === "오후" && hour < 12) hour += 12;
+    if (koreanClock[1] === "오전" && hour === 12) hour = 0;
+    return hour * 60 + minute;
+  }
+  if (/^(아침|오전|morning)/.test(text)) return 8 * 60;
+  if (/^(점심|오후|afternoon)/.test(text)) return 13 * 60;
+  if (/^(저녁|evening)/.test(text)) return 18 * 60;
+  if (/숙박|overnight/.test(text)) return 23 * 60 + 59;
+  return Number.POSITIVE_INFINITY;
+}
+
+function sortedEventsForDisplay(events = []) {
+  return events
+    .map((event, index) => ({ event, index }))
+    .sort((left, right) => eventTimeSortValue(left.event.time) - eventTimeSortValue(right.event.time) || left.index - right.index);
+}
+
 function renderDay(day) {
+  const events = sortedEventsForDisplay(day.events || []);
   return `
     <article id="${escapeHtml(day.id)}" class="day-card">
       <header class="day-header"><div><p class="eyebrow">${escapeHtml(day.day)}</p><h3>${escapeHtml(day.date)}</h3></div><div class="day-header-actions"><div class="day-location">${escapeHtml(day.location)}<small>${escapeHtml(day.locationDetail)}</small></div><button class="day-action" data-action="add-event" data-day-id="${escapeHtml(day.id)}" type="button">+ 일정</button><button class="day-action" data-action="edit-day" data-day-id="${escapeHtml(day.id)}" type="button">수정</button><button class="day-action" data-action="delete-day" data-day-id="${escapeHtml(day.id)}" type="button">삭제</button></div></header>
-      <div class="timeline">${day.events.map((event, index) => renderEvent(event, day.id, index)).join("")}</div>
+      <div class="timeline">${events.map(({ event, index }) => renderEvent(event, day.id, index)).join("")}</div>
     </article>
   `;
 }
